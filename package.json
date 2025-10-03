@@ -1,0 +1,17 @@
+{
+  "name": "browser7",
+  "version": "1.0.0",
+  "description": "Node.js client for the Browser7 API",
+  "main": "index.js",
+  "keywords": [
+    "browser7",
+    "web-scraping",
+    "rendering",
+    "api-client"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "dotenv": "^16.0.0"
+  }
+}
