@@ -18,7 +18,6 @@ const gunzip = promisify(zlib.gunzip);
  * @property {string} [city] - City for the render
  * @property {number} [delay] - Delay in milliseconds before capturing
  * @property {boolean} [fetchUrl] - Whether to fetch the URL
- * @property {function(ProgressEvent): void} [onProgress] - Optional progress callback
  */
 
 /**
@@ -49,20 +48,18 @@ class Browser7 {
    * Render a URL and poll for the result
    * @param {string} url - The URL to render
    * @param {RenderOptions} [options={}] - Optional render parameters
-   * @param {number} [pollInterval=1000] - Polling interval in milliseconds
-   * @param {number} [maxAttempts=60] - Maximum number of polling attempts
+   * @param {function(ProgressEvent): void} [onProgress] - Optional progress callback
    * @returns {Promise<RenderResult>} The render result
    */
-  async render(url, options = {}, pollInterval = 1000, maxAttempts = 60) {
-    // Extract onProgress callback from options
-    const { onProgress, ...apiOptions } = options;
+  async render(url, options = {}, onProgress) {
+    const maxAttempts = 60;
 
     // Build request payload with only defined API options
     const payload = { url };
-    if (apiOptions.countryCode !== undefined) payload.countryCode = apiOptions.countryCode;
-    if (apiOptions.city !== undefined) payload.city = apiOptions.city;
-    if (apiOptions.delay !== undefined) payload.delay = apiOptions.delay;
-    if (apiOptions.fetchUrl !== undefined) payload.fetchUrl = apiOptions.fetchUrl;
+    if (options.countryCode !== undefined) payload.countryCode = options.countryCode;
+    if (options.city !== undefined) payload.city = options.city;
+    if (options.delay !== undefined) payload.delay = options.delay;
+    if (options.fetchUrl !== undefined) payload.fetchUrl = options.fetchUrl;
 
     // Start the render
     const renderUrl = `${this.baseUrl}/renders`;
