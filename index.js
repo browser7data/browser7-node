@@ -17,7 +17,7 @@ const gunzip = promisify(zlib.gunzip);
  * @property {string} [countryCode] - Country code for the render
  * @property {string} [city] - City for the render
  * @property {number} [delay] - Delay in milliseconds before capturing
- * @property {boolean} [fetchUrl] - Whether to fetch the URL
+ * @property {string[]} [fetchUrls] - List of URLs to fetch
  */
 
 /**
@@ -59,7 +59,7 @@ class Browser7 {
     if (options.countryCode !== undefined) payload.countryCode = options.countryCode;
     if (options.city !== undefined) payload.city = options.city;
     if (options.delay !== undefined) payload.delay = options.delay;
-    if (options.fetchUrl !== undefined) payload.fetchUrl = options.fetchUrl;
+    if (options.fetchUrls !== undefined) payload.fetchUrls = options.fetchUrls;
 
     // Start the render
     const renderUrl = `${this.baseUrl}/renders`;
