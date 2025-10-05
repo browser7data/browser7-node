@@ -45,15 +45,12 @@ class Browser7 {
   }
 
   /**
-   * Render a URL and poll for the result
+   * Create a new render job
    * @param {string} url - The URL to render
    * @param {RenderOptions} [options={}] - Optional render parameters
-   * @param {function(ProgressEvent): void} [onProgress] - Optional progress callback
-   * @returns {Promise<RenderResult>} The render result
+   * @returns {Promise<RenderResponse>} Object containing renderId
    */
-  async render(url, options = {}, onProgress) {
-    const maxAttempts = 60;
-
+  async createRender(url, options = {}) {
     // Build request payload with only defined API options
     const payload = { url };
     if (options.countryCode !== undefined) payload.countryCode = options.countryCode;
@@ -61,7 +58,6 @@ class Browser7 {
     if (options.delay !== undefined) payload.delay = options.delay;
     if (options.fetchUrls !== undefined) payload.fetchUrls = options.fetchUrls;
 
-    // Start the render
     const renderUrl = `${this.baseUrl}/renders`;
 
     let renderResponse;
@@ -83,7 +79,72 @@ class Browser7 {
       throw new Error(`Failed to start render: ${renderResponse.status} ${error}`);
     }
 
-    const { renderId } = await renderResponse.json();
+    return await renderResponse.json();
+  }
+
+  /**
+   * Get the status and result of a render job
+   * @param {string} renderId - The render ID to retrieve
+   * @returns {Promise<RenderResult>} The render result with current status
+   */
+  async getRender(renderId) {
+    const statusUrl = `${this.baseUrl}/renders/${renderId}`;
+
+    let resultResponse;
+    try {
+      resultResponse = await fetch(statusUrl, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        }
+      });
+    } catch (error) {
+      throw new Error(`Failed to connect to ${statusUrl}: ${error.message}`);
+    }
+
+    if (!resultResponse.ok) {
+      const error = await resultResponse.text();
+      throw new Error(`Failed to get render status: ${resultResponse.status} ${error}`);
+    }
+
+    const result = await resultResponse.json();
+
+    // Decompress the gzipped HTML if present
+    if (result.html) {
+      try {
+        const buffer = Buffer.from(result.html, 'base64');
+        const decompressed = await gunzip(buffer);
+        result.html = decompressed.toString('utf-8');
+      } catch (error) {
+        // Silently fail decompression
+      }
+    }
+
+    // Decompress and parse fetchResponses if present
+    if (result.fetchResponses) {
+      try {
+        const buffer = Buffer.from(result.fetchResponses, 'base64');
+        const decompressed = await gunzip(buffer);
+        const jsonString = decompressed.toString('utf-8');
+        result.fetchResponses = JSON.parse(jsonString);
+      } catch (error) {
+        // Silently fail decompression/parsing
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Render a URL and poll for the result
+   * @param {string} url - The URL to render
+   * @param {RenderOptions} [options={}] - Optional render parameters
+   * @param {function(ProgressEvent): void} [onProgress] - Optional progress callback
+   * @returns {Promise<RenderResult>} The render result
+   */
+  async render(url, options = {}, onProgress) {
+    const maxAttempts = 60;
+
+    const { renderId } = await this.createRender(url, options);
 
     // Emit started event
     if (onProgress) {
@@ -99,25 +160,7 @@ class Browser7 {
 
     // Poll for the result
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const statusUrl = `${this.baseUrl}/renders/${renderId}`;
-
-      let resultResponse;
-      try {
-        resultResponse = await fetch(statusUrl, {
-          headers: {
-            'Authorization': `Bearer ${this.apiKey}`
-          }
-        });
-      } catch (error) {
-        throw new Error(`Failed to connect to ${statusUrl}: ${error.message}`);
-      }
-
-      if (!resultResponse.ok) {
-        const error = await resultResponse.text();
-        throw new Error(`Failed to get render status: ${resultResponse.status} ${error}`);
-      }
-
-      const result = await resultResponse.json();
+      const result = await this.getRender(renderId);
 
       // Emit polling event
       if (onProgress) {
@@ -132,17 +175,6 @@ class Browser7 {
       }
 
       if (result.status === 'completed') {
-        // Decompress the gzipped HTML if present
-        if (result.html) {
-          try {
-            const buffer = Buffer.from(result.html, 'base64');
-            const decompressed = await gunzip(buffer);
-            result.html = decompressed.toString('utf-8');
-          } catch (error) {
-            // Silently fail decompression
-          }
-        }
-
         // Emit completed event
         if (onProgress) {
           onProgress({
