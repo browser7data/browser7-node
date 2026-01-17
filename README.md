@@ -1,5 +1,11 @@
 # Browser7 Node.js SDK
 
+> ⚠️ **ALPHA RELEASE** - The Browser7 API is not yet publicly available. This SDK is published to reserve the package name. The API is expected to launch in **Q2 2026**.
+>
+> **Do not install this package yet** - it will not work until the Browser7 API is live. Follow [@browser7data](https://x.com/browser7data) or visit [browser7.com](https://browser7.com) for launch announcements.
+
+---
+
 Official Node.js client for the [Browser7](https://browser7.com) web scraping and rendering API.
 
 Browser7 provides geo-targeted web scraping with automatic proxy management, CAPTCHA solving, and powerful wait actions for dynamic content.
@@ -423,7 +429,7 @@ console.log(result.html);  // TypeScript knows html is a string
 
 ## Contributing
 
-Issues and pull requests are welcome! Please visit our [GitHub repository](https://github.com/browser7/browser7-node).
+Issues and pull requests are welcome! Please visit our [GitHub repository](https://github.com/browser7data/browser7-node).
 
 ## License
 
@@ -433,7 +439,7 @@ MIT
 
 - 📧 Email: support@browser7.com
 - 📚 Documentation: https://docs.browser7.com
-- 🐛 Issues: https://github.com/browser7/browser7-node/issues
+- 🐛 Issues: https://github.com/browser7data/browser7-node/issues
 - 💬 Discord: https://discord.gg/browser7
 
 ## Links
