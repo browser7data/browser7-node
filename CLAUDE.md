@@ -80,10 +80,11 @@ browser7-node/
 
 #### Constructor
 ```javascript
-constructor(apiKey)
+constructor(options)
 ```
-- Validates API key
-- Sets base URL from `BROWSER7_API_URL` env var or defaults to `https://api.browser7.com/v1`
+- Accepts configuration object with `apiKey` (required) and `baseUrl` (optional)
+- Validates API key is provided
+- Sets base URL from `options.baseUrl` or defaults to `https://api.browser7.com/v1`
 
 #### Public Methods
 
@@ -155,13 +156,16 @@ cp .env.example .env  # If exists, or create .env manually
 
 ### Environment Variables
 
-**`.env` file** (local development):
+**`.env` file** (for test.js local development):
 ```bash
-BROWSER7_API_URL=https://api.browser7.local/v1  # Local dev
-NODE_TLS_REJECT_UNAUTHORIZED=0                   # Disable SSL verification for local
+BROWSER7_API_KEY=b7_your_api_key_here         # Optional: Override test API key
+BROWSER7_API_URL=https://api.browser7.re/v1  # Optional: Override base URL
+NODE_TLS_REJECT_UNAUTHORIZED=0                # Disable SSL verification for local
 ```
 
-**Production**: No .env needed, SDK defaults to `https://api.browser7.com/v1`
+**Note**: The SDK itself does not read environment variables. The test script (`test.js`) reads these env vars and passes them to the SDK constructor via the options object.
+
+**Production**: Applications using the SDK should pass configuration directly to the constructor. The SDK defaults to `https://api.browser7.com/v1` if no baseUrl is provided.
 
 ### Testing
 
@@ -246,19 +250,28 @@ Follow semantic versioning (semver):
 
 **Development**:
 ```javascript
-BROWSER7_API_URL=https://api.browser7.local/v1
-NODE_TLS_REJECT_UNAUTHORIZED=0
+const client = new Browser7({
+  apiKey: 'your-api-key',
+  baseUrl: 'https://api.browser7.re/v1'
+});
+// Note: For local dev, you may also need:
+// process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 ```
 
 **Staging**:
 ```javascript
-BROWSER7_API_URL=https://api.browser7.dev/v1
+const client = new Browser7({
+  apiKey: 'your-api-key',
+  baseUrl: 'https://api.browser7.dev/v1'
+});
 ```
 
 **Production** (default):
 ```javascript
-// No configuration needed, uses default
-// https://api.browser7.com/v1
+const client = new Browser7({
+  apiKey: 'your-api-key'
+  // No baseUrl needed, defaults to https://api.browser7.com/v1
+});
 ```
 
 ## Usage Examples
@@ -267,7 +280,7 @@ BROWSER7_API_URL=https://api.browser7.dev/v1
 ```javascript
 const Browser7 = require('browser7');
 
-const client = new Browser7('your-api-key');
+const client = new Browser7({ apiKey: 'your-api-key' });
 const result = await client.render('https://example.com');
 console.log(result.html);
 ```

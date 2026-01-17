@@ -1,16 +1,40 @@
 {
   "name": "browser7",
-  "version": "1.0.0",
-  "description": "Node.js client for the Browser7 API",
+  "version": "2.0.0",
+  "description": "Official Node.js SDK for Browser7 - Geo-targeted web scraping with automatic CAPTCHA solving and wait actions",
   "main": "index.js",
   "keywords": [
     "browser7",
     "web-scraping",
+    "scraping",
     "rendering",
-    "api-client"
+    "headless-browser",
+    "captcha",
+    "captcha-solver",
+    "geo-targeting",
+    "proxy",
+    "api-client",
+    "screenshot",
+    "automation"
   ],
-  "author": "",
+  "author": "Browser7 <support@browser7.com> (https://browser7.com)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/browser7/browser7-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/browser7/browser7-node/issues"
+  },
+  "homepage": "https://browser7.com",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
   "devDependencies": {
     "dotenv": "^16.0.0"
   }

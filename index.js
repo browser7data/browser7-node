@@ -13,11 +13,23 @@ const gunzip = promisify(zlib.gunzip);
  */
 
 /**
+ * @typedef {Object} WaitAction
+ * @property {string} type - Action type ('delay', 'selector', 'text', 'click')
+ * @property {number} [duration] - Duration in milliseconds (for 'delay' type)
+ * @property {string} [selector] - CSS selector (for 'selector', 'text', 'click' types)
+ * @property {string} [state] - Element state: 'visible', 'hidden', 'attached' (for 'selector' type)
+ * @property {string} [text] - Text to wait for (for 'text' type)
+ * @property {number} [timeout] - Timeout in milliseconds (for 'selector', 'text', 'click' types)
+ */
+
+/**
  * @typedef {Object} RenderOptions
- * @property {string} [countryCode] - Country code for the render
- * @property {string} [city] - City for the render
- * @property {number} [delay] - Delay in milliseconds before capturing
- * @property {string[]} [fetchUrls] - List of URLs to fetch
+ * @property {string} [countryCode] - Country code for the render (e.g., 'US', 'GB', 'DE')
+ * @property {string} [city] - City name for the render (e.g., 'new.york', 'london')
+ * @property {string[]} [fetchUrls] - List of URLs to fetch after rendering
+ * @property {WaitAction[]} [waitFor] - Array of wait actions to execute (max 10)
+ * @property {string} [captcha] - CAPTCHA mode: 'disabled', 'auto', 'recaptcha_v2', 'recaptcha_v3', 'turnstile' (default: 'disabled')
+ * @property {boolean} [blockImages] - Whether to block images (default: true)
  */
 
 /**
@@ -26,22 +38,58 @@ const gunzip = promisify(zlib.gunzip);
  */
 
 /**
+ * @typedef {Object} SelectedCity
+ * @property {string} name - City name
+ * @property {string} displayName - Display name for the city
+ * @property {number} latitude - City latitude
+ * @property {number} longitude - City longitude
+ * @property {string} timezoneId - Timezone identifier
+ */
+
+/**
+ * @typedef {Object} BandwidthMetrics
+ * @property {number} networkBytes - Bytes downloaded from network
+ * @property {number} cachedBytes - Bytes served from cache
+ * @property {string} cacheHitRate - Cache hit rate percentage
+ */
+
+/**
+ * @typedef {Object} CaptchaInfo
+ * @property {boolean} detected - Whether CAPTCHA was detected
+ * @property {boolean} handled - Whether CAPTCHA was solved
+ * @property {string} [sitekey] - CAPTCHA sitekey if detected
+ */
+
+/**
  * @typedef {Object} RenderResult
- * @property {string} status - The status of the render (e.g., "completed", "processing", "failed")
- * @property {*} [data] - The render result data (structure depends on API response)
+ * @property {string} status - The status of the render ("completed", "processing", "failed", etc.)
+ * @property {string} [html] - The rendered HTML (automatically decompressed)
+ * @property {Buffer} [screenshot] - JPEG screenshot as Buffer
+ * @property {Array} [fetchResponses] - Array of fetch response objects (automatically decompressed)
+ * @property {string} loadStrategy - Load strategy used for rendering
+ * @property {SelectedCity} selectedCity - City used for the render
+ * @property {BandwidthMetrics} bandwidthMetrics - Network bandwidth statistics
+ * @property {CaptchaInfo} captcha - CAPTCHA detection and handling info
+ * @property {Object} timingBreakdown - Performance timing breakdown
+ * @property {number} retryAfter - Suggested retry interval (for polling)
+ * @property {string} [error] - Error message if status is 'failed'
  */
 
 class Browser7 {
   /**
    * Create a Browser7 API client
-   * @param {string} apiKey - Your Browser7 API key
+   * @param {Object} options - Configuration options
+   * @param {string} options.apiKey - Your Browser7 API key
+   * @param {string} [options.baseUrl] - Full API base URL including version path
+   *                                      (e.g., 'https://api.browser7.com/v1')
+   *                                      Defaults to production API
    */
-  constructor(apiKey) {
-    if (!apiKey) {
+  constructor(options = {}) {
+    if (!options.apiKey) {
       throw new Error('API key is required');
     }
-    this.apiKey = apiKey;
-    this.baseUrl = process.env.BROWSER7_API_URL || 'https://api.browser7.com/v1';
+    this.apiKey = options.apiKey;
+    this.baseUrl = options.baseUrl || 'https://api.browser7.com/v1';
   }
 
   /**
@@ -55,8 +103,10 @@ class Browser7 {
     const payload = { url };
     if (options.countryCode !== undefined) payload.countryCode = options.countryCode;
     if (options.city !== undefined) payload.city = options.city;
-    if (options.delay !== undefined) payload.delay = options.delay;
     if (options.fetchUrls !== undefined) payload.fetchUrls = options.fetchUrls;
+    if (options.waitFor !== undefined) payload.waitFor = options.waitFor;
+    if (options.captcha !== undefined) payload.captcha = options.captcha;
+    if (options.blockImages !== undefined) payload.blockImages = options.blockImages;
 
     const renderUrl = `${this.baseUrl}/renders`;
 
@@ -128,6 +178,15 @@ class Browser7 {
         result.fetchResponses = JSON.parse(jsonString);
       } catch (error) {
         // Silently fail decompression/parsing
+      }
+    }
+
+    // Decode screenshot from base64 to Buffer if present
+    if (result.screenshot) {
+      try {
+        result.screenshot = Buffer.from(result.screenshot, 'base64');
+      } catch (error) {
+        // Silently fail decoding
       }
     }
 
@@ -207,6 +266,71 @@ class Browser7 {
     }
 
     throw new Error(`Render timed out after ${maxAttempts} attempts`);
+  }
+
+  /**
+   * Helper method to create a delay wait action
+   * @param {number} duration - Duration in milliseconds (100-60000)
+   * @returns {WaitAction} A delay wait action object
+   * @static
+   */
+  static waitForDelay(duration) {
+    return {
+      type: 'delay',
+      duration
+    };
+  }
+
+  /**
+   * Helper method to create a selector wait action
+   * @param {string} selector - CSS selector to wait for
+   * @param {string} [state='visible'] - Element state: 'visible', 'hidden', or 'attached'
+   * @param {number} [timeout=30000] - Timeout in milliseconds (1000-60000)
+   * @returns {WaitAction} A selector wait action object
+   * @static
+   */
+  static waitForSelector(selector, state = 'visible', timeout = 30000) {
+    return {
+      type: 'selector',
+      selector,
+      state,
+      timeout
+    };
+  }
+
+  /**
+   * Helper method to create a text wait action
+   * @param {string} text - Text to wait for
+   * @param {string} [selector] - Optional CSS selector to limit search scope
+   * @param {number} [timeout=30000] - Timeout in milliseconds (1000-60000)
+   * @returns {WaitAction} A text wait action object
+   * @static
+   */
+  static waitForText(text, selector, timeout = 30000) {
+    const action = {
+      type: 'text',
+      text,
+      timeout
+    };
+    if (selector) {
+      action.selector = selector;
+    }
+    return action;
+  }
+
+  /**
+   * Helper method to create a click wait action
+   * @param {string} selector - CSS selector of element to click
+   * @param {number} [timeout=30000] - Timeout in milliseconds (1000-60000)
+   * @returns {WaitAction} A click wait action object
+   * @static
+   */
+  static waitForClick(selector, timeout = 30000) {
+    return {
+      type: 'click',
+      selector,
+      timeout
+    };
   }
 }
 
