@@ -2,7 +2,15 @@
   "name": "browser7",
   "version": "1.0.0-alpha.1",
   "description": "Official Node.js SDK for Browser7 - Geo-targeted web scraping with automatic CAPTCHA solving and wait actions [ALPHA - API launching Q2 2026]",
-  "main": "index.js",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    }
+  },
   "keywords": [
     "browser7",
     "web-scraping",
@@ -14,7 +22,6 @@
     "geo-targeting",
     "proxy",
     "api-client",
-    "screenshot",
     "automation"
   ],
   "author": "Browser7 <support@browser7.com> (https://browser7.com)",
@@ -30,12 +37,21 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "scripts": {
+    "build": "tsup",
+    "test:esm": "node test/test-esm.mjs",
+    "test:cjs": "node test/test-cjs.cjs",
+    "test": "npm run test:esm && npm run test:cjs",
+    "prepublishOnly": "npm run build"
+  },
   "files": [
-    "index.js",
+    "dist",
     "README.md",
     "LICENSE"
   ],
   "devDependencies": {
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
   }
 }

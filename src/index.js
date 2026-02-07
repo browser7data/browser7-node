@@ -1,5 +1,6 @@
-const zlib = require('zlib');
-const { promisify } = require('util');
+import zlib from 'zlib';
+import { promisify } from 'util';
+
 const gunzip = promisify(zlib.gunzip);
 
 /**
@@ -64,7 +65,6 @@ const gunzip = promisify(zlib.gunzip);
  * @typedef {Object} RenderResult
  * @property {string} status - The status of the render ("completed", "processing", "failed", etc.)
  * @property {string} [html] - The rendered HTML (automatically decompressed)
- * @property {Buffer} [screenshot] - JPEG screenshot as Buffer
  * @property {Array} [fetchResponses] - Array of fetch response objects (automatically decompressed)
  * @property {string} loadStrategy - Load strategy used for rendering
  * @property {SelectedCity} selectedCity - City used for the render
@@ -181,16 +181,49 @@ class Browser7 {
       }
     }
 
-    // Decode screenshot from base64 to Buffer if present
-    if (result.screenshot) {
-      try {
-        result.screenshot = Buffer.from(result.screenshot, 'base64');
-      } catch (error) {
-        // Silently fail decoding
-      }
+    return result;
+  }
+
+  /**
+   * @typedef {Object} BalanceBreakdown
+   * @property {number} cents - Balance in cents
+   * @property {string} formatted - Formatted balance (e.g., "$10.50")
+   */
+
+  /**
+   * @typedef {Object} AccountBalance
+   * @property {number} totalBalanceCents - Total balance in cents (also equals total renders remaining)
+   * @property {string} totalBalanceFormatted - Total balance formatted as USD currency
+   * @property {Object} breakdown - Breakdown by balance type
+   * @property {BalanceBreakdown} breakdown.paid - Paid balance details
+   * @property {BalanceBreakdown} breakdown.free - Free balance details
+   * @property {BalanceBreakdown} breakdown.bonus - Bonus balance details
+   */
+
+  /**
+   * Get the current account balance
+   * @returns {Promise<AccountBalance>} The account balance
+   */
+  async getAccountBalance() {
+    const balanceUrl = `${this.baseUrl}/account/balance`;
+
+    let balanceResponse;
+    try {
+      balanceResponse = await fetch(balanceUrl, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        }
+      });
+    } catch (error) {
+      throw new Error(`Failed to connect to ${balanceUrl}: ${error.message}`);
     }
 
-    return result;
+    if (!balanceResponse.ok) {
+      const error = await balanceResponse.text();
+      throw new Error(`Failed to get account balance: ${balanceResponse.status} ${error}`);
+    }
+
+    return await balanceResponse.json();
   }
 
   /**
@@ -334,4 +367,4 @@ class Browser7 {
   }
 }
 
-module.exports = Browser7;
+export default Browser7;

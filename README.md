@@ -15,9 +15,9 @@ Browser7 provides geo-targeted web scraping with automatic proxy management, CAP
 - 🌍 **Geo-Targeting** - Render pages from specific countries and cities
 - 🤖 **CAPTCHA Solving** - Automatic detection and solving of reCAPTCHA and Cloudflare Turnstile
 - ⏱️ **Wait Actions** - Click elements, wait for selectors, text, or delays
-- 📸 **Screenshots** - Get JPEG screenshots of rendered pages
 - 🚀 **Performance** - Block images, track bandwidth, view timing metrics
 - 🔄 **Automatic Polling** - Built-in polling with progress callbacks
+- 📦 **Dual Package** - Works with both ESM (`import`) and CommonJS (`require`)
 - 💪 **Zero Dependencies** - Uses Node.js native `fetch` and `zlib`
 
 ## Installation
@@ -31,8 +31,13 @@ npm install browser7
 ## Quick Start
 
 ```javascript
+// ESM
+import Browser7 from 'browser7';
+
+// Or CommonJS
 const Browser7 = require('browser7');
 
+// Create client
 const client = new Browser7({ apiKey: 'your-api-key' });
 
 // Simple render
@@ -58,7 +63,6 @@ const result = await client.render('https://example.com', {
 });
 
 console.log(result.html);              // Rendered HTML
-console.log(result.screenshot);        // JPEG screenshot (Buffer)
 console.log(result.selectedCity);      // City used for rendering
 ```
 
@@ -128,6 +132,19 @@ const result = await client.render('https://example.com', {
 });
 
 console.log(result.fetchResponses);  // Array of fetch responses
+```
+
+### Check Account Balance
+
+```javascript
+const balance = await client.getAccountBalance();
+
+console.log(`Total: ${balance.totalBalanceFormatted}`);
+console.log(`Renders remaining: ${balance.totalBalanceCents}`);
+console.log(`\nBreakdown:`);
+console.log(`  Paid: ${balance.breakdown.paid.formatted} (${balance.breakdown.paid.cents} renders)`);
+console.log(`  Free: ${balance.breakdown.free.formatted} (${balance.breakdown.free.cents} renders)`);
+console.log(`  Bonus: ${balance.breakdown.bonus.formatted} (${balance.breakdown.bonus.cents} renders)`);
 ```
 
 ## API Reference
@@ -214,7 +231,6 @@ Browser7.waitForClick(selector, timeout)
 {
   status: 'completed',
   html: '<!DOCTYPE html>...',               // Decompressed HTML
-  screenshot: Buffer,                       // JPEG screenshot
   loadStrategy: 'waitForPaintingStable',
   selectedCity: {
     name: 'new.york',
@@ -255,6 +271,45 @@ Create a render job (low-level API).
 Get the status and result of a render job (low-level API).
 
 **Returns:** Promise<RenderResult>
+
+### `client.getAccountBalance()`
+
+Get the current account balance.
+
+**Returns:** Promise<AccountBalance>
+
+**AccountBalance:**
+
+```javascript
+{
+  totalBalanceCents: 1300,           // Total balance in cents (also equals renders remaining)
+  totalBalanceFormatted: "$13.00",   // Formatted as USD currency
+  breakdown: {
+    paid: {
+      cents: 1050,                   // Paid balance in cents
+      formatted: "$10.50"            // Formatted as USD
+    },
+    free: {
+      cents: 200,                    // Free balance in cents
+      formatted: "$2.00"             // Formatted as USD
+    },
+    bonus: {
+      cents: 50,                     // Bonus balance in cents
+      formatted: "$0.50"             // Formatted as USD
+    }
+  }
+}
+```
+
+**Example:**
+
+```javascript
+const balance = await client.getAccountBalance();
+console.log(`Total: ${balance.totalBalanceFormatted}`);
+console.log(`Renders remaining: ${balance.totalBalanceCents}`);
+```
+
+**Note:** Since 1 cent = 1 render, `totalBalanceCents` directly shows how many renders you can perform.
 
 ## Helper Methods
 
@@ -356,19 +411,6 @@ while (true) {
 console.log(result.html);
 ```
 
-### Saving Screenshots
-
-```javascript
-const fs = require('fs').promises;
-
-const result = await client.render('https://example.com');
-
-if (result.screenshot) {
-  await fs.writeFile('screenshot.jpg', result.screenshot);
-  console.log('Screenshot saved!');
-}
-```
-
 ### Custom API Endpoint
 
 ```javascript
@@ -414,7 +456,7 @@ Browser7 supports automatic CAPTCHA detection and solving for:
 The SDK includes JSDoc comments for TypeScript IntelliSense:
 
 ```typescript
-import Browser7 = require('browser7');
+import Browser7 from 'browser7';
 
 const client = new Browser7({ apiKey: 'your-api-key' });
 
