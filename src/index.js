@@ -31,6 +31,10 @@ const gunzip = promisify(zlib.gunzip);
  * @property {WaitAction[]} [waitFor] - Array of wait actions to execute (max 10)
  * @property {string} [captcha] - CAPTCHA mode: 'disabled', 'auto', 'recaptcha_v2', 'recaptcha_v3', 'turnstile' (default: 'disabled')
  * @property {boolean} [blockImages] - Whether to block images (default: true)
+ * @property {boolean} [includeScreenshot] - Enable screenshot capture in the response (default: false)
+ * @property {string} [screenshotFormat] - Screenshot format: 'jpeg' or 'png' (default: 'jpeg')
+ * @property {number} [screenshotQuality] - JPEG quality 1-100 (default: 80, only applies to JPEG format)
+ * @property {boolean} [screenshotFullPage] - Capture full scrollable page or viewport only (default: false)
  */
 
 /**
@@ -66,12 +70,13 @@ const gunzip = promisify(zlib.gunzip);
  * @property {string} status - The status of the render ("completed", "processing", "failed", etc.)
  * @property {string} [html] - The rendered HTML (automatically decompressed)
  * @property {Array} [fetchResponses] - Array of fetch response objects (automatically decompressed)
+ * @property {string} [screenshot] - Base64-encoded screenshot image (if includeScreenshot was true)
  * @property {string} loadStrategy - Load strategy used for rendering
  * @property {SelectedCity} selectedCity - City used for the render
  * @property {BandwidthMetrics} bandwidthMetrics - Network bandwidth statistics
  * @property {CaptchaInfo} captcha - CAPTCHA detection and handling info
  * @property {Object} timingBreakdown - Performance timing breakdown
- * @property {number} retryAfter - Suggested retry interval (for polling)
+ * @property {number} retryAfter - Server-suggested retry interval in seconds
  * @property {string} [error] - Error message if status is 'failed'
  */
 
@@ -107,6 +112,10 @@ class Browser7 {
     if (options.waitFor !== undefined) payload.waitFor = options.waitFor;
     if (options.captcha !== undefined) payload.captcha = options.captcha;
     if (options.blockImages !== undefined) payload.blockImages = options.blockImages;
+    if (options.includeScreenshot !== undefined) payload.includeScreenshot = options.includeScreenshot;
+    if (options.screenshotFormat !== undefined) payload.screenshotFormat = options.screenshotFormat;
+    if (options.screenshotQuality !== undefined) payload.screenshotQuality = options.screenshotQuality;
+    if (options.screenshotFullPage !== undefined) payload.screenshotFullPage = options.screenshotFullPage;
 
     const renderUrl = `${this.baseUrl}/renders`;
 

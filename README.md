@@ -94,6 +94,23 @@ const result = await client.render('https://protected-site.com', {
 console.log(result.captcha);  // CAPTCHA detection info
 ```
 
+### With Screenshots
+
+```javascript
+const result = await client.render('https://example.com', {
+  countryCode: 'US',
+  includeScreenshot: true,      // Enable screenshot
+  screenshotFormat: 'jpeg',     // 'jpeg' or 'png'
+  screenshotQuality: 80,        // 1-100 (JPEG only)
+  screenshotFullPage: false     // false = viewport only, true = full page
+});
+
+// Save screenshot to file
+const fs = require('fs');
+const screenshotBuffer = Buffer.from(result.screenshot, 'base64');
+fs.writeFileSync('screenshot.jpg', screenshotBuffer);
+```
+
 ### With Progress Tracking
 
 ```javascript
@@ -191,6 +208,10 @@ Render a URL and poll for the result (recommended).
 | `captcha` | string | CAPTCHA mode: 'disabled', 'auto', 'recaptcha_v2', 'recaptcha_v3', 'turnstile' | 'disabled' |
 | `blockImages` | boolean | Block images for faster rendering | true |
 | `fetchUrls` | string[] | Additional URLs to fetch (max 10) | - |
+| `includeScreenshot` | boolean | Enable screenshot capture | false |
+| `screenshotFormat` | string | Screenshot format: 'jpeg' or 'png' | 'jpeg' |
+| `screenshotQuality` | number | JPEG quality (1-100, only for JPEG) | 80 |
+| `screenshotFullPage` | boolean | Capture full page or viewport only | false |
 
 **Wait Action Types:**
 
@@ -231,7 +252,8 @@ Browser7.waitForClick(selector, timeout)
 {
   status: 'completed',
   html: '<!DOCTYPE html>...',               // Decompressed HTML
-  loadStrategy: 'waitForPaintingStable',
+  screenshot: 'iVBORw0KGgoAAAANS...',        // Base64-encoded image (if requested)
+  loadStrategy: 'default',                  // 'default' or 'custom'
   selectedCity: {
     name: 'new.york',
     displayName: 'New York',
@@ -256,7 +278,7 @@ Browser7.waitForClick(selector, timeout)
     waitActionsMs: 1325
   },
   fetchResponses: [],  // Array if fetchUrls was provided
-  retryAfter: 1
+  retryAfter: 1        // Server-suggested polling interval (seconds)
 }
 ```
 
