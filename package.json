@@ -1,6 +1,6 @@
 {
   "name": "browser7",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "description": "Official Node.js SDK for Browser7 - Geo-targeted web scraping with automatic CAPTCHA solving and wait actions [ALPHA - API launching Q2 2026]",
   "type": "module",
   "main": "./dist/index.cjs",
