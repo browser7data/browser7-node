@@ -1,7 +1,16 @@
 import zlib from 'zlib';
 import { promisify } from 'util';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 const gunzip = promisify(zlib.gunzip);
+
+// Get package version for User-Agent header
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
+const USER_AGENT = `browser7-node/${packageJson.version}`;
 
 /**
  * @typedef {Object} ProgressEvent
@@ -125,7 +134,8 @@ class Browser7 {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'User-Agent': USER_AGENT
         },
         body: JSON.stringify(payload)
       });
@@ -153,7 +163,8 @@ class Browser7 {
     try {
       resultResponse = await fetch(statusUrl, {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`
+          'Authorization': `Bearer ${this.apiKey}`,
+          'User-Agent': USER_AGENT
         }
       });
     } catch (error) {
@@ -220,7 +231,8 @@ class Browser7 {
     try {
       balanceResponse = await fetch(balanceUrl, {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`
+          'Authorization': `Bearer ${this.apiKey}`,
+          'User-Agent': USER_AGENT
         }
       });
     } catch (error) {

@@ -271,11 +271,14 @@ Browser7.waitForClick(selector, timeout)
     handled: false
   },
   timingBreakdown: {
-    totalMs: 5234,
-    navigationMs: 1523,
-    loadStrategyMs: 2341,
-    captchaMs: 45,
-    waitActionsMs: 1325
+    browserInitMs: 245,      // Browser initialization
+    navigationMs: 1523,      // Page navigation
+    loadStrategyMs: 2341,    // Load strategy wait
+    captchaMs: 45,           // CAPTCHA detection/solving
+    waitActionsMs: 1325,     // User's waitFor actions
+    screenshotMs: 0,         // User screenshot capture (0 if not requested)
+    htmlCaptureMs: 89,       // HTML extraction
+    totalMs: 5234            // Total render time
   },
   fetchResponses: [],  // Array if fetchUrls was provided
   retryAfter: 1        // Server-suggested polling interval (seconds)
