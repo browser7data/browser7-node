@@ -1,4 +1,8 @@
 import { defineConfig } from 'tsup';
+import { readFileSync } from 'fs';
+
+// Read package.json for version injection
+const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 export default defineConfig({
   entry: ['src/index.js'],
@@ -12,6 +16,10 @@ export default defineConfig({
     return {
       js: format === 'cjs' ? '.cjs' : '.mjs'
     };
+  },
+  define: {
+    // Inject package version at build time
+    __PACKAGE_VERSION__: JSON.stringify(packageJson.version)
   },
   esbuildOptions(options, context) {
     // Fix CJS default export to work with require()

@@ -1,16 +1,10 @@
 import zlib from 'zlib';
 import { promisify } from 'util';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 
 const gunzip = promisify(zlib.gunzip);
 
-// Get package version for User-Agent header
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const packageJson = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8'));
-const USER_AGENT = `browser7-node/${packageJson.version}`;
+// Package version injected at build time via tsup's define option
+const USER_AGENT = `browser7-node/${__PACKAGE_VERSION__}`;
 
 /**
  * @typedef {Object} ProgressEvent
@@ -44,6 +38,7 @@ const USER_AGENT = `browser7-node/${packageJson.version}`;
  * @property {string} [screenshotFormat] - Screenshot format: 'jpeg' or 'png' (default: 'jpeg')
  * @property {number} [screenshotQuality] - JPEG quality 1-100 (default: 80, only applies to JPEG format)
  * @property {boolean} [screenshotFullPage] - Capture full scrollable page or viewport only (default: false)
+ * @property {boolean} [debug] - Enable debug mode for this render: syncs HTML, fetch responses, and screenshots to dashboard for 7 days (default: false)
  */
 
 /**
@@ -125,6 +120,7 @@ class Browser7 {
     if (options.screenshotFormat !== undefined) payload.screenshotFormat = options.screenshotFormat;
     if (options.screenshotQuality !== undefined) payload.screenshotQuality = options.screenshotQuality;
     if (options.screenshotFullPage !== undefined) payload.screenshotFullPage = options.screenshotFullPage;
+    if (options.debug !== undefined) payload.debug = options.debug;
 
     const renderUrl = `${this.baseUrl}/renders`;
 
@@ -245,6 +241,45 @@ class Browser7 {
     }
 
     return await balanceResponse.json();
+  }
+
+  /**
+   * @typedef {Object} Region
+   * @property {string} code - Region code (e.g., 'eu', 'ca', 'sg')
+   * @property {string} name - Human-readable region name (e.g., 'Europe')
+   * @property {'active'|'maintenance'|'inactive'} status - Current region status
+   */
+
+  /**
+   * @typedef {Object} RegionsResponse
+   * @property {Region[]} regions - Available API regions
+   */
+
+  /**
+   * Get available API regions and geographic recommendations.
+   * This is a public endpoint and does not require authentication.
+   * @returns {Promise<RegionsResponse>} Available regions and recommendations
+   */
+  async getRegions() {
+    const regionsUrl = `${this.baseUrl}/regions`;
+
+    let regionsResponse;
+    try {
+      regionsResponse = await fetch(regionsUrl, {
+        headers: {
+          'User-Agent': USER_AGENT
+        }
+      });
+    } catch (error) {
+      throw new Error(`Failed to connect to ${regionsUrl}: ${error.message}`);
+    }
+
+    if (!regionsResponse.ok) {
+      const error = await regionsResponse.text();
+      throw new Error(`Failed to get regions: ${regionsResponse.status} ${error}`);
+    }
+
+    return await regionsResponse.json();
   }
 
   /**
