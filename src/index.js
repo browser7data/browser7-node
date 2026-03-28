@@ -1,0 +1,498 @@
+import zlib from 'zlib';
+import { promisify } from 'util';
+import {
+  Browser7Error,
+  AuthenticationError,
+  ValidationError,
+  RateLimitError,
+  InsufficientBalanceError,
+  RenderError
+} from './errors.js';
+
+const gunzip = promisify(zlib.gunzip);
+
+/**
+ * Parse response text and throw the appropriate typed error
+ * @param {number} statusCode - HTTP status code
+ * @param {string} responseText - Raw response body text
+ * @param {string} context - Description of the operation (e.g., 'Failed to start render')
+ * @throws {Browser7Error|AuthenticationError|ValidationError|RateLimitError|InsufficientBalanceError|RenderError}
+ */
+function throwApiError(statusCode, responseText, context) {
+  let body = null;
+  try {
+    body = JSON.parse(responseText);
+  } catch {
+    // Response wasn't JSON — use raw text in message
+  }
+
+  const apiMessage = body?.message || responseText;
+  const message = `${context}: ${statusCode} ${apiMessage}`;
+
+  switch (statusCode) {
+    case 400:
+      throw new ValidationError(message, statusCode, body);
+    case 401:
+    case 403:
+      throw new AuthenticationError(message, statusCode, body);
+    case 402:
+      throw new InsufficientBalanceError(message, statusCode, body);
+    case 422:
+      throw new RenderError(
+        message, statusCode, body,
+        body?.errorCode ?? null,
+        body?.id ?? null,
+        body?.billable ?? null
+      );
+    case 429:
+      throw new RateLimitError(message, statusCode, body);
+    default:
+      throw new Browser7Error(message, statusCode, body);
+  }
+}
+
+// Package version injected at build time via tsup's define option
+const USER_AGENT = `browser7-node/${__PACKAGE_VERSION__}`;
+
+/**
+ * @typedef {Object} ProgressEvent
+ * @property {string} type - Event type ('started', 'polling', 'completed', 'failed')
+ * @property {string} renderId - The render ID
+ * @property {string} timestamp - ISO timestamp
+ * @property {string} [status] - Current render status
+ * @property {number} [attempt] - Current polling attempt number
+ * @property {number} [retryAfter] - Server-suggested retry interval in seconds
+ */
+
+/**
+ * @typedef {Object} WaitAction
+ * @property {string} type - Action type ('delay', 'selector', 'text', 'click')
+ * @property {number} [duration] - Duration in milliseconds (for 'delay' type)
+ * @property {string} [selector] - CSS selector (for 'selector', 'text', 'click' types)
+ * @property {string} [state] - Element state: 'visible', 'hidden', 'attached' (for 'selector' type)
+ * @property {string} [text] - Text to wait for (for 'text' type)
+ * @property {number} [timeout] - Timeout in milliseconds (for 'selector', 'text', 'click' types)
+ */
+
+/**
+ * @typedef {Object} RenderOptions
+ * @property {string} [countryCode] - Country code for the render (e.g., 'US', 'GB', 'DE')
+ * @property {string} [city] - City name for the render (e.g., 'new.york', 'london')
+ * @property {string[]} [fetchUrls] - List of URLs to fetch after rendering
+ * @property {WaitAction[]} [waitFor] - Array of wait actions to execute (max 10)
+ * @property {string} [captcha] - CAPTCHA mode: 'disabled', 'auto', 'recaptcha_v2', 'recaptcha_v3', 'turnstile' (default: 'disabled')
+ * @property {boolean} [blockImages] - Whether to block images (default: true)
+ * @property {boolean} [includeScreenshot] - Enable screenshot capture in the response (default: false)
+ * @property {string} [screenshotFormat] - Screenshot format: 'jpeg' or 'png' (default: 'jpeg')
+ * @property {number} [screenshotQuality] - JPEG quality 1-100 (default: 80, only applies to JPEG format)
+ * @property {boolean} [screenshotFullPage] - Capture full scrollable page or viewport only (default: false)
+ * @property {boolean} [debug] - Enable debug mode for this render: syncs HTML, fetch responses, and screenshots to dashboard for 7 days (default: false)
+ * @property {boolean} [forceNewProxy] - Force a new proxy session with a fresh IP address instead of reusing an existing session (default: false)
+ */
+
+/**
+ * @typedef {Object} RenderResponse
+ * @property {string} renderId - The ID of the render job
+ */
+
+/**
+ * @typedef {Object} SelectedCity
+ * @property {string} name - City name
+ * @property {string} displayName - Display name for the city
+ * @property {number} latitude - City latitude
+ * @property {number} longitude - City longitude
+ * @property {string} timezoneId - Timezone identifier
+ */
+
+/**
+ * @typedef {Object} BandwidthMetrics
+ * @property {number} networkBytes - Bytes downloaded from network
+ * @property {number} cachedBytes - Bytes served from cache
+ * @property {string} cacheHitRate - Cache hit rate percentage
+ */
+
+/**
+ * @typedef {Object} CaptchaInfo
+ * @property {boolean} detected - Whether CAPTCHA was detected
+ * @property {boolean} handled - Whether CAPTCHA was solved
+ * @property {string} [sitekey] - CAPTCHA sitekey if detected
+ */
+
+/**
+ * @typedef {Object} RenderResult
+ * @property {string} status - The status of the render ("completed", "processing", "failed", etc.)
+ * @property {string} [html] - The rendered HTML (automatically decompressed)
+ * @property {Array} [fetchResponses] - Array of fetch response objects (automatically decompressed)
+ * @property {string} [screenshot] - Base64-encoded screenshot image (if includeScreenshot was true)
+ * @property {string} loadStrategy - Load strategy used for rendering
+ * @property {SelectedCity} selectedCity - City used for the render
+ * @property {BandwidthMetrics} bandwidthMetrics - Network bandwidth statistics
+ * @property {CaptchaInfo} captcha - CAPTCHA detection and handling info
+ * @property {Object} timingBreakdown - Performance timing breakdown
+ * @property {number} retryAfter - Server-suggested retry interval in seconds
+ * @property {string} [error] - Error message if status is 'failed'
+ */
+
+class Browser7 {
+  /**
+   * Create a Browser7 API client
+   * @param {Object} options - Configuration options
+   * @param {string} options.apiKey - Your Browser7 API key
+   * @param {string} [options.baseUrl] - Full API base URL including version path
+   *                                      (e.g., 'https://api.browser7.com/v1')
+   *                                      Defaults to production API
+   */
+  constructor(options = {}) {
+    if (!options.apiKey) {
+      throw new Browser7Error('API key is required');
+    }
+    this.apiKey = options.apiKey;
+    this.baseUrl = options.baseUrl || 'https://api.browser7.com/v1';
+  }
+
+  /**
+   * Create a new render job
+   * @param {string} url - The URL to render
+   * @param {RenderOptions} [options={}] - Optional render parameters
+   * @returns {Promise<RenderResponse>} Object containing renderId
+   */
+  async createRender(url, options = {}) {
+    // Build request payload with only defined API options
+    const payload = { url };
+    if (options.countryCode !== undefined) payload.countryCode = options.countryCode;
+    if (options.city !== undefined) payload.city = options.city;
+    if (options.fetchUrls !== undefined) payload.fetchUrls = options.fetchUrls;
+    if (options.waitFor !== undefined) payload.waitFor = options.waitFor;
+    if (options.captcha !== undefined) payload.captcha = options.captcha;
+    if (options.blockImages !== undefined) payload.blockImages = options.blockImages;
+    if (options.includeScreenshot !== undefined) payload.includeScreenshot = options.includeScreenshot;
+    if (options.screenshotFormat !== undefined) payload.screenshotFormat = options.screenshotFormat;
+    if (options.screenshotQuality !== undefined) payload.screenshotQuality = options.screenshotQuality;
+    if (options.screenshotFullPage !== undefined) payload.screenshotFullPage = options.screenshotFullPage;
+    if (options.debug !== undefined) payload.debug = options.debug;
+    if (options.forceNewProxy !== undefined) payload.forceNewProxy = options.forceNewProxy;
+
+    const renderUrl = `${this.baseUrl}/renders`;
+
+    let renderResponse;
+    try {
+      renderResponse = await fetch(renderUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'User-Agent': USER_AGENT
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      throw new Browser7Error(`Failed to connect to ${renderUrl}: ${error.message}`);
+    }
+
+    if (!renderResponse.ok) {
+      const error = await renderResponse.text();
+      throwApiError(renderResponse.status, error, 'Failed to start render');
+    }
+
+    return await renderResponse.json();
+  }
+
+  /**
+   * Get the status and result of a render job
+   * @param {string} renderId - The render ID to retrieve
+   * @returns {Promise<RenderResult>} The render result with current status
+   */
+  async getRender(renderId) {
+    const statusUrl = `${this.baseUrl}/renders/${renderId}`;
+
+    let resultResponse;
+    try {
+      resultResponse = await fetch(statusUrl, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'User-Agent': USER_AGENT
+        }
+      });
+    } catch (error) {
+      throw new Browser7Error(`Failed to connect to ${statusUrl}: ${error.message}`);
+    }
+
+    if (!resultResponse.ok) {
+      const error = await resultResponse.text();
+      throwApiError(resultResponse.status, error, 'Failed to get render status');
+    }
+
+    const result = await resultResponse.json();
+
+    // Decompress the gzipped HTML if present
+    if (result.html) {
+      try {
+        const buffer = Buffer.from(result.html, 'base64');
+        const decompressed = await gunzip(buffer);
+        result.html = decompressed.toString('utf-8');
+      } catch (error) {
+        // Silently fail decompression
+      }
+    }
+
+    // Decompress and parse fetchResponses if present
+    if (result.fetchResponses) {
+      try {
+        const buffer = Buffer.from(result.fetchResponses, 'base64');
+        const decompressed = await gunzip(buffer);
+        const jsonString = decompressed.toString('utf-8');
+        result.fetchResponses = JSON.parse(jsonString);
+      } catch (error) {
+        // Silently fail decompression/parsing
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * @typedef {Object} BalanceBreakdown
+   * @property {number} cents - Balance in cents
+   * @property {string} formatted - Formatted balance (e.g., "$10.50")
+   */
+
+  /**
+   * @typedef {Object} AccountBalance
+   * @property {number} totalBalanceCents - Total balance in cents (also equals total renders remaining)
+   * @property {string} totalBalanceFormatted - Total balance formatted as USD currency
+   * @property {Object} breakdown - Breakdown by balance type
+   * @property {BalanceBreakdown} breakdown.paid - Paid balance details
+   * @property {BalanceBreakdown} breakdown.free - Free balance details
+   * @property {BalanceBreakdown} breakdown.bonus - Bonus balance details
+   */
+
+  /**
+   * Get the current account balance
+   * @returns {Promise<AccountBalance>} The account balance
+   */
+  async getAccountBalance() {
+    const balanceUrl = `${this.baseUrl}/account/balance`;
+
+    let balanceResponse;
+    try {
+      balanceResponse = await fetch(balanceUrl, {
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'User-Agent': USER_AGENT
+        }
+      });
+    } catch (error) {
+      throw new Browser7Error(`Failed to connect to ${balanceUrl}: ${error.message}`);
+    }
+
+    if (!balanceResponse.ok) {
+      const error = await balanceResponse.text();
+      throwApiError(balanceResponse.status, error, 'Failed to get account balance');
+    }
+
+    return await balanceResponse.json();
+  }
+
+  /**
+   * @typedef {Object} Region
+   * @property {string} code - Region code (e.g., 'eu', 'ca', 'sg')
+   * @property {string} name - Human-readable region name (e.g., 'Europe')
+   * @property {'active'|'maintenance'|'inactive'} status - Current region status
+   */
+
+  /**
+   * @typedef {Object} RegionsResponse
+   * @property {Region[]} regions - Available API regions
+   */
+
+  /**
+   * Get available API regions and geographic recommendations.
+   * This is a public endpoint and does not require authentication.
+   * @returns {Promise<RegionsResponse>} Available regions and recommendations
+   */
+  async getRegions() {
+    const regionsUrl = `${this.baseUrl}/regions`;
+
+    let regionsResponse;
+    try {
+      regionsResponse = await fetch(regionsUrl, {
+        headers: {
+          'User-Agent': USER_AGENT
+        }
+      });
+    } catch (error) {
+      throw new Browser7Error(`Failed to connect to ${regionsUrl}: ${error.message}`);
+    }
+
+    if (!regionsResponse.ok) {
+      const error = await regionsResponse.text();
+      throwApiError(regionsResponse.status, error, 'Failed to get regions');
+    }
+
+    return await regionsResponse.json();
+  }
+
+  /**
+   * Render a URL and poll for the result
+   * @param {string} url - The URL to render
+   * @param {RenderOptions} [options={}] - Optional render parameters
+   * @param {function(ProgressEvent): void} [onProgress] - Optional progress callback
+   * @returns {Promise<RenderResult>} The render result
+   */
+  async render(url, options = {}, onProgress) {
+    const maxAttempts = 60;
+
+    const { renderId } = await this.createRender(url, options);
+
+    // Emit started event
+    if (onProgress) {
+      onProgress({
+        type: 'started',
+        renderId,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Wait 2 seconds before starting to poll
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Poll for the result
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const result = await this.getRender(renderId);
+
+      // Emit polling event
+      if (onProgress) {
+        onProgress({
+          type: 'polling',
+          renderId,
+          timestamp: new Date().toISOString(),
+          status: result.status,
+          attempt: attempt + 1,
+          retryAfter: result.retryAfter
+        });
+      }
+
+      if (result.status === 'completed') {
+        // Emit completed event
+        if (onProgress) {
+          onProgress({
+            type: 'completed',
+            renderId,
+            timestamp: new Date().toISOString(),
+            status: result.status
+          });
+        }
+
+        return result;
+      }
+
+      if (result.status === 'failed') {
+        // Emit failed event
+        if (onProgress) {
+          onProgress({
+            type: 'failed',
+            renderId,
+            timestamp: new Date().toISOString(),
+            status: result.status
+          });
+        }
+        throw new RenderError(
+          `Render failed: ${result.error || 'Unknown error'}`,
+          null, result, result.errorCode ?? null, renderId, result.billable ?? null
+        );
+      }
+
+      // Wait before polling again - use server-suggested interval or default to 1 second
+      const retryAfter = result.retryAfter ? result.retryAfter * 1000 : 1000;
+      await new Promise(resolve => setTimeout(resolve, retryAfter));
+    }
+
+    throw new RenderError(
+      `Render timed out after ${maxAttempts} attempts`,
+      null, null, 'RENDER_TIMEOUT', renderId, null
+    );
+  }
+
+  /**
+   * Helper method to create a delay wait action
+   * @param {number} duration - Duration in milliseconds (100-60000)
+   * @returns {WaitAction} A delay wait action object
+   * @static
+   */
+  static waitForDelay(duration) {
+    return {
+      type: 'delay',
+      duration
+    };
+  }
+
+  /**
+   * Helper method to create a selector wait action
+   * @param {string} selector - CSS selector to wait for
+   * @param {string} [state='visible'] - Element state: 'visible', 'hidden', or 'attached'
+   * @param {number} [timeout=30000] - Timeout in milliseconds (1000-60000)
+   * @returns {WaitAction} A selector wait action object
+   * @static
+   */
+  static waitForSelector(selector, state = 'visible', timeout = 30000) {
+    return {
+      type: 'selector',
+      selector,
+      state,
+      timeout
+    };
+  }
+
+  /**
+   * Helper method to create a text wait action
+   * @param {string} text - Text to wait for
+   * @param {string} [selector] - Optional CSS selector to limit search scope
+   * @param {number} [timeout=30000] - Timeout in milliseconds (1000-60000)
+   * @returns {WaitAction} A text wait action object
+   * @static
+   */
+  static waitForText(text, selector, timeout = 30000) {
+    const action = {
+      type: 'text',
+      text,
+      timeout
+    };
+    if (selector) {
+      action.selector = selector;
+    }
+    return action;
+  }
+
+  /**
+   * Helper method to create a click wait action
+   * @param {string} selector - CSS selector of element to click
+   * @param {number} [timeout=30000] - Timeout in milliseconds (1000-60000)
+   * @returns {WaitAction} A click wait action object
+   * @static
+   */
+  static waitForClick(selector, timeout = 30000) {
+    return {
+      type: 'click',
+      selector,
+      timeout
+    };
+  }
+}
+
+// Attach error classes as static properties for CJS compatibility
+Browser7.Browser7Error = Browser7Error;
+Browser7.AuthenticationError = AuthenticationError;
+Browser7.ValidationError = ValidationError;
+Browser7.RateLimitError = RateLimitError;
+Browser7.InsufficientBalanceError = InsufficientBalanceError;
+Browser7.RenderError = RenderError;
+
+export default Browser7;
+export {
+  Browser7Error,
+  AuthenticationError,
+  ValidationError,
+  RateLimitError,
+  InsufficientBalanceError,
+  RenderError
+};
